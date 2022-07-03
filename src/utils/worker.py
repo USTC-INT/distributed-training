@@ -5,6 +5,8 @@ import struct
 import time
 import paramiko
 from time import sleep
+from threading import Thread
+
 
 work_dir = '/home/sdn/fj/distributed-layer-INA'
 
@@ -31,14 +33,14 @@ def bind_port(listen_ip, listen_port):
     conn, _ = s.accept()
     return conn
 
-def send_data(socket, data):
+def send_data(s, data):
     ser_data = pickle.dumps(data)
-    socket.sendall(struct.pack(">I", len(ser_data)))
-    socket.sendall(ser_data)
+    s.sendall(struct.pack(">I", len(ser_data)))
+    s.sendall(ser_data)
 
-def get_data(socket):
-    data_len = struct.unpack(">I", socket.recv(4))[0]
-    data = socket.recv(data_len, socket.MSG_WAITALL)
+def get_data(s):
+    data_len = struct.unpack(">I", s.recv(4))[0]
+    data = s.recv(data_len, socket.MSG_WAITALL)
     recv_data = pickle.loads(data)
     return recv_data
 
@@ -56,14 +58,16 @@ class Worker:
         self.ps_ip=ps_ip
         self.ps_port=ps_port
         self.socket = None
-        self.updated_para=None
+        self.updated_paras=None
         
     def launch(self, para, partition):
         try:
-            if self.ip !="127.0.0.1":
-                self._launch_remote_process()
+            if self.ip =="127.0.0.1":
+                t= Thread(target=self._launch_local_process)
+                t.start()
             else:
-                self._launch_local_process()
+                t= Thread(target=self._launch_remote_process)
+                t.start()
         except Exception as e:
             print(e)
             exit(1)
@@ -83,10 +87,10 @@ class Worker:
 
     def _init_send_socket(self):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        while self.socket.connect_ex((self.ps_ip, int(self.ps_port))) != 0:
+        while self.socket.connect_ex((self.ip, int(self.ps_port))) != 0:
             sleep(0.5)
 
-    def _launch_remote_process(self, cmd):
+    def _launch_remote_process(self):
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
@@ -98,8 +102,8 @@ class Worker:
             ssh.close()
             raise e
         else:
-            cmd = ' cd ' + work_dir + '; sudo python3 ' + '-u launch.py' + \
-                  ' --master ' + str(False) + \
+            cmd = ' cd ' + work_dir + '; sudo python3 ' + '-u src/launch.py' + \
+                  ' --master ' + str(0) + \
                   ' --master_ip ' + str(self.ps_ip) + \
                   ' --master_port ' + str(self.ps_port) + \
                   ' --ip ' + str(self.ip) + \
