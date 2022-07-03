@@ -107,7 +107,7 @@ def create_dataloaders(dataset, batch_size, selected_idxs=None, shuffle=True, pi
     return DataLoaderHelper(dataloader)
 
 
-def load_datasets(dataset_type, data_path=CURRENT_PATH+'/../data/datasets'):
+def load_dataset(dataset_type, data_path=CURRENT_PATH+'/../data/datasets'):
     train_transform = load_default_transform(dataset_type, train=True)
     test_transform = load_default_transform(dataset_type, train=False)
     train_dataset = None
@@ -154,7 +154,7 @@ def load_default_transform(dataset_type, train=False):
     return dataset_transform
 
 def partition_data(dataset_name, worker_num):
-    train_dataset, test_dataset = load_datasets(dataset_name)
+    train_dataset, test_dataset = load_dataset(dataset_name)
 
     if dataset_name == "CIFAR100":
         test_partition_sizes = np.ones((100, worker_num)) * (1 / worker_num)
