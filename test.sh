@@ -1,0 +1,1 @@
+sudo python3 src/launch.py --master 1 --ip 172.16.160.3 --worker_num 1 --config_file config/workers.json 
