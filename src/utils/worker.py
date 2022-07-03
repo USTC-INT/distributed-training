@@ -56,6 +56,7 @@ class Worker:
         self.ps_ip=ps_ip
         self.ps_port=ps_port
         self.socket = None
+        self.updated_para=None
         
     def launch(self, para, partition):
         try:
