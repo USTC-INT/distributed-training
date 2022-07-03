@@ -1,4 +1,6 @@
 .github/
+__pycache__/
 
-src/communicate
 config/
+src/communicate
+data/datasets
