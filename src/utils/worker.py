@@ -33,7 +33,8 @@ def bind_port(listen_ip, listen_port):
     conn, _ = s.accept()
     return conn
 
-def send_data(s, data):
+def send_data(s, timestamp, data):
+    s.sendall(struct.pack(">d", timestamp))
     ser_data = pickle.dumps(data)
     s.sendall(struct.pack(">I", len(ser_data)))
     s.sendall(ser_data)
@@ -59,6 +60,7 @@ class Worker:
         self.ps_port=ps_port
         self.socket = None
         self.updated_paras=None
+        self.sending_time=None
         
     def launch(self, para, partition):
         try:
@@ -87,12 +89,14 @@ class Worker:
     
     def get_trained_model(self):
         try:
+            timestamp=struct.unpack(">d", self.socket.recv(8))[0]
             data_len = struct.unpack(">I", self.socket.recv(4))[0]
             data = self.socket.recv(data_len, socket.MSG_WAITALL)
         except Exception as e:
             print(e)
             exit(1)
         else:
+            self.sending_time=timestamp
             self.updated_paras = pickle.loads(data)
             # self.updated_paras.to()
 

@@ -5,6 +5,7 @@ import json
 import math
 import random
 import time
+from tracemalloc import start
 import numpy as np
 import torch
 import os
@@ -168,18 +169,23 @@ def master_loop(model, dataset, worker_num, config_file, batch_size, epoch, base
         print("Start training...")
         global_model.to(device)
         for epoch_idx in range(epoch):
+            comm_time=0
             start_time=time.time()
             communication_parallel(worker_list, action="pull")
+            comm_time+=(time.time()- max([w.sending_time for w in worker_list]))
             
             global_para = torch.nn.utils.parameters_to_vector(global_model.parameters()).clone().detach()
             global_para = aggregate(global_para, worker_list, step_size)
             
             communication_parallel(worker_list, action="push", updated_data=global_para)
 
+            duration = time.time() - start_time
+            
             torch.nn.utils.vector_to_parameters(global_para, global_model.parameters())
             loss, acc = test(global_model, test_loader, device)
-            duration = time.time() - start_time
-            print("Epoch: {}, accuracy = {}, loss = {}, duration = {}\n".format(epoch_idx, acc, loss, duration))
+
+            print("Epoch: {}, accuracy = {}, loss = {}.".format(epoch_idx, acc, loss))
+            print("Epoch duration => {} sec, communication => {} sec.".format(duration, comm_time))
     finally:
         for w in worker_list:
             w.socket.shutdown(2)
@@ -226,7 +232,8 @@ def worker_loop(model, dataset,idx, batch_size, epoch, master_port):
             
             print("Epoch {}: train loss = {}, test loss = {}, test accuracy = {}".format(epoch, train_loss,test_loss, acc))
             
-            worker.send_data(master_socket, local_para)
+            push_time=time.time()
+            worker.send_data(master_socket, push_time, local_para)
 
             local_para = worker.get_data(master_socket)
 
