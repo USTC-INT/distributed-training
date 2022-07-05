@@ -84,6 +84,17 @@ class Worker:
         ser_data = pickle.dumps(data)
         self.socket.sendall(struct.pack(">I", len(ser_data)))
         self.socket.sendall(ser_data)
+    
+    def get_trained_model(self):
+        try:
+            data_len = struct.unpack(">I", self.socket.recv(4))[0]
+            data = self.socket.recv(data_len, socket.MSG_WAITALL)
+        except Exception as e:
+            print(e)
+            exit(1)
+        else:
+            self.updated_paras = pickle.loads(data)
+            # self.updated_paras.to()
 
     def _init_send_socket(self):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

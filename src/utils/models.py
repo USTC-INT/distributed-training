@@ -43,21 +43,19 @@ class m_AlexNet(nn.Module):
 
 def get_model(model_name):
     """
-    :param model_name: alexnet vgg16 resnet50 resnet101 resnet152
+    :param model_name: alexnet vgg16 resnet50 resnet18
     :return: model instance
     """
     model = None
 
     if model_name == 'resnet50':
-        model = m.resnet50(pretrained=True)
+        model = m.resnet50()
     elif model_name == 'vgg16':
-        model = m.vgg16(pretrained=True)
+        model = m.vgg16()
     elif model_name == 'alexnet':
         model = m_AlexNet()
-    elif model_name == 'resnet101':
-        model = m.resnet101(pretrained=True)
-    elif model_name == 'resnet152':
-        model = m.resnet152(pretrained=True)
+    elif model_name == 'resnet18':
+        model = m.resnet18()
     else: 
         raise ValueError("No such model! \n")
     

@@ -94,7 +94,7 @@ def train(model, data_loader, optimizer, local_iters=None, device=None):
 
     return train_loss
 
-def communication_parallel(worker_list, action, para=None,data=None, partition=None):
+def communication_parallel(worker_list, action, para=None,updated_data=None, partition=None):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=len(worker_list), )
@@ -103,22 +103,11 @@ def communication_parallel(worker_list, action, para=None,data=None, partition=N
         if action == "init":
             tasks.append(loop.run_in_executor(executor, w.launch, para, partition))
         elif action == "pull":
-            tasks.append(loop.run_in_executor(executor, get_models, w.socket, w.updated_paras))
+            tasks.append(loop.run_in_executor(executor, w.get_trained_model))
         elif action == "push":
-            tasks.append(loop.run_in_executor(executor, w.send_data, data))
+            tasks.append(loop.run_in_executor(executor, w.send_data, updated_data))
     loop.run_until_complete(asyncio.wait(tasks))
     loop.close()
-
-def get_models(socket, updated_paras):
-    try:
-        received_para = worker.get_data(socket)
-    except Exception as e:
-        print(e)
-        exit(1)
-    else:
-        received_para.to(device)
-        updated_paras = received_para
-
 
 def master_loop(model, dataset, worker_num, config_file, batch_size, epoch, base_port):
     master_listen_port_base = base_port + random.randint(0,20) * 20
@@ -162,7 +151,7 @@ def master_loop(model, dataset, worker_num, config_file, batch_size, epoch, base
         file.close()
 
     init_para = torch.nn.utils.parameters_to_vector(global_model.parameters())
-    print("Model {}: {} MB".format(model,init_para.nelement() * 4 / 1024 / 1024))
+    print("Model {}: {} MB".format(model,init_para.nelement() * init_para.element_size() / 1024 / 1024))
     
     test_loader = datasets.create_dataloaders(test_dataset, batch_size=batch_size, shuffle=False)
     train_data_partition, test_data_partition = datasets.partition_data(dataset, worker_num, train_dataset, test_dataset)
@@ -185,7 +174,7 @@ def master_loop(model, dataset, worker_num, config_file, batch_size, epoch, base
             global_para = torch.nn.utils.parameters_to_vector(global_model.parameters()).clone().detach()
             global_para = aggregate(global_para, worker_list, step_size)
             
-            communication_parallel(worker_list, action="push", data=global_para)
+            communication_parallel(worker_list, action="push", updated_data=global_para)
 
             torch.nn.utils.vector_to_parameters(global_para, global_model.parameters())
             loss, acc = test(global_model, test_loader, device)
@@ -238,7 +227,9 @@ def worker_loop(model, dataset,idx, batch_size, epoch, master_port):
             print("Epoch {}: train loss = {}, test loss = {}, test accuracy = {}".format(epoch, train_loss,test_loss, acc))
             
             worker.send_data(master_socket, local_para)
+
             local_para = worker.get_data(master_socket)
+
             torch.nn.utils.vector_to_parameters(local_para, local_model.parameters())
     finally:
         master_socket.shutdown(2)
