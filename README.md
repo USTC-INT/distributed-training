@@ -1,4 +1,4 @@
-# Distributed Layer Training for PS Architecture
+# Distributed Training with PS Architecture
 
 This repo is the training code of In-network Layer Aggregation for Distributed Training. One distributed training task contains one PS and several workers, communicating with each other by sockets.
 
