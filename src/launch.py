@@ -154,7 +154,7 @@ def master_loop(model, dataset, worker_num, config_file, batch_size, epoch, base
     init_para = torch.nn.utils.parameters_to_vector(global_model.parameters())
     print("Model {}: {} MB".format(model,init_para.nelement() * init_para.element_size() / 1024 / 1024))
     
-    test_loader = datasets.create_dataloaders(test_dataset, batch_size=batch_size, shuffle=False)
+    test_loader = datasets.create_dataloaders(test_dataset, batch_size,shuffle=False)
     train_data_partition, test_data_partition = datasets.partition_data(dataset, worker_num, train_dataset, test_dataset)
     
     try:
@@ -173,7 +173,8 @@ def master_loop(model, dataset, worker_num, config_file, batch_size, epoch, base
             start_time=time.time()
             communication_parallel(worker_list, action="pull")
             comm_time+=(time.time()- max([w.sending_time for w in worker_list]))
-            
+            delta_time = max([w.sending_time for w in worker_list]) - min([w.sending_time for w in worker_list])
+
             global_para = torch.nn.utils.parameters_to_vector(global_model.parameters()).clone().detach()
             global_para = aggregate(global_para, worker_list, step_size)
             
@@ -185,7 +186,7 @@ def master_loop(model, dataset, worker_num, config_file, batch_size, epoch, base
             loss, acc = test(global_model, test_loader, device)
 
             print("Epoch: {}, accuracy = {}, loss = {}.".format(epoch_idx, acc, loss))
-            print("Epoch duration => {} sec, communication => {} sec.".format(duration, comm_time))
+            print("Epoch duration => {} sec, comm => {} sec, delta => {} sec".format(duration, comm_time, delta_time))
     finally:
         for w in worker_list:
             w.socket.shutdown(2)
@@ -217,8 +218,8 @@ def worker_loop(model, dataset,idx, batch_size, epoch, master_port):
     except ValueError as e:
         print(e)
     else:
-        train_loader = datasets.create_dataloaders(train_dataset, batch_size=batch_size,selected_idxs=config["train_data_index"])
-        test_loader = datasets.create_dataloaders(test_dataset, batch_size=batch_size, shuffle=False)
+        train_loader = datasets.create_dataloaders(train_dataset, batch_size,selected_idxs=config["train_data_index"])
+        test_loader = datasets.create_dataloaders(test_dataset, batch_size, shuffle=False)
         torch.nn.utils.vector_to_parameters(config['para'], local_model.parameters())
         local_model.to(device)
         local_steps = 50

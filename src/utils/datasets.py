@@ -95,14 +95,14 @@ class LabelwisePartitioner(object):
         return len(self.data)
 
 
-def create_dataloaders(dataset, batch_size, selected_idxs=None, shuffle=True, pin_memory=True, num_workers=4):
+def create_dataloaders(dataset, batch_size, selected_idxs=None, shuffle=True, pin_memory=True):
     if selected_idxs == None:
         dataloader = DataLoader(dataset, batch_size=batch_size,
-                                shuffle=shuffle, pin_memory=pin_memory, num_workers=num_workers)
+                                shuffle=shuffle, pin_memory=pin_memory)
     else:
         partition = Partition(dataset, selected_idxs)
         dataloader = DataLoader(partition, batch_size=batch_size,
-                                shuffle=shuffle, pin_memory=pin_memory, num_workers=num_workers)
+                                shuffle=shuffle, pin_memory=pin_memory)
 
     return DataLoaderHelper(dataloader)
 
