@@ -21,10 +21,10 @@ pip3 install setuptools-rust -i https://mirrors.aliyun.com/pypi/simple/
 python3 -m pip install --upgrade pip -i https://mirrors.aliyun.com/pypi/simple/
 
 # Install paramiko
-pip3 install paramiko -i https://mirrors.aliyun.com/pypi/simple/
+pip3 install paramiko -i https://pypi.mirrors.ustc.edu.cn/simple/
 ```
 
 ## Usage
 
-1. Run `./deploy.sh` to sync codes among all the machines.
+1. Run `./deploy.sh` to sync codes among all the machines: make sure you have created the `distributed-layer-INA` directory.
 2. Run `./test.sh $WORKER_NUM` to start training. The scripts will run `python3 launch.py --master True xxx` to launch the PS, which will launch workers via ssh according to the IP list in config/.
