@@ -225,13 +225,15 @@ def worker_loop(model, dataset,idx, batch_size, epoch, master_port):
         local_steps = 50
 
         for epoch in range(epoch):
+            start=time.time()
             epoch_lr = max((decay_rate * lr, min_lr))
             optimizer = torch.optim.SGD(local_model.parameters(), lr=epoch_lr, weight_decay=weight_decay)
             train_loss = train(local_model, train_loader, optimizer, local_iters=local_steps, device=device)
             local_para = torch.nn.utils.parameters_to_vector(local_model.parameters()).clone().detach()
+            duration=time.time()-start
             test_loss, acc = test(local_model, test_loader, device)
             
-            print("Epoch {}: train loss = {}, test loss = {}, test accuracy = {}".format(epoch, train_loss,test_loss, acc))
+            print("Epoch {}: train loss = {}, test loss = {}, test accuracy = {}, duration = {} sec.".format(epoch, train_loss,test_loss, acc, duration))
             
             push_time=time.time()
             worker.send_data(master_socket, push_time, local_para)
