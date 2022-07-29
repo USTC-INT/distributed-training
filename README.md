@@ -21,5 +21,20 @@ pip3 install paramiko -i https://pypi.mirrors.ustc.edu.cn/simple/
 
 ## Usage
 
+We ignore the config files for security. You need to create `config\workers.json` for distributed training.
+
+```json
+[
+    {
+        "host_ip": "id of worker 1",
+        "ssh_port": "port for ssh"
+    },
+    {
+        "host_ip": "id of worker 2",
+        "ssh_port": "port for ssh"
+    },
+]
+```
+
 1. Run `./deploy.sh` to sync codes among all the machines: make sure you have created the `<repo>` directory.
-2. Run `./test.sh $WORKER_NUM` to start training. The scripts will run `python3 launch.py --master True xxx` to launch the PS, which will launch workers via ssh according to the IP list in config/.
+2. Run `./test.sh $WORKER_NUM` to start training. The scripts will run `python3 launch.py --master True xxx` to launch the PS, which will launch workers via ssh according to the IP list in `config/workers.json`
