@@ -1,7 +1,0 @@
-.github/
-__pycache__/
-.vscode/
-
-config/
-src/communicate
-data/datasets
