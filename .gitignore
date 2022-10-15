@@ -1,0 +1,11 @@
+.github/
+__pycache__/
+.vscode/
+
+config/
+src/communicate
+data/datasets
+data/log
+
+deploy.sh
+test.sh
