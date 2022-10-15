@@ -113,7 +113,7 @@ def communication_parallel(worker_list, action, para=None,updated_data=None, par
 def master_loop(model, dataset, worker_num, config_file, batch_size, epoch, base_port):
     master_listen_port_base = base_port + random.randint(0,20) * 20
     worker_list=[]
-    step_size=1
+    step_size=50
 
     try:
         global_model = models.get_model(model)
@@ -152,7 +152,7 @@ def master_loop(model, dataset, worker_num, config_file, batch_size, epoch, base
         file.close()
 
     init_para = torch.nn.utils.parameters_to_vector(global_model.parameters())
-    print("Model {}: {} MB".format(model,init_para.nelement() * init_para.element_size() / 1024 / 1024))
+    print("Model {}: {} paras, {} MB".format(model,init_para.nelement(),init_para.nelement() * init_para.element_size() / 1024 / 1024))
     
     test_loader = datasets.create_dataloaders(test_dataset, batch_size,shuffle=False)
     train_data_partition, test_data_partition = datasets.partition_data(dataset, worker_num, train_dataset, test_dataset)
@@ -169,15 +169,17 @@ def master_loop(model, dataset, worker_num, config_file, batch_size, epoch, base
         print("Start training...")
         global_model.to(device)
         for epoch_idx in range(epoch):
-            comm_time=0
+            comm_duration=0
             start_time=time.time()
             communication_parallel(worker_list, action="pull")
-            comm_time+=(time.time()- max([w.sending_time for w in worker_list]))
+            comm_duration+=(time.time()- max([w.sending_time for w in worker_list]))
             delta_time = max([w.sending_time for w in worker_list]) - min([w.sending_time for w in worker_list])
 
+            start_agg=time.time()
             global_para = torch.nn.utils.parameters_to_vector(global_model.parameters()).clone().detach()
             global_para = aggregate(global_para, worker_list, step_size)
-            
+            agg_duration=time.time()-start_agg
+
             communication_parallel(worker_list, action="push", updated_data=global_para)
 
             duration = time.time() - start_time
@@ -185,8 +187,8 @@ def master_loop(model, dataset, worker_num, config_file, batch_size, epoch, base
             torch.nn.utils.vector_to_parameters(global_para, global_model.parameters())
             loss, acc = test(global_model, test_loader, device)
 
-            print("Epoch: {}, accuracy = {}, loss = {}.".format(epoch_idx, acc, loss))
-            print("Epoch duration => {} sec, comm => {} sec, delta => {} sec".format(duration, comm_time, delta_time))
+            print("Epoch: {}, throughput = {} image/s, accuracy = {}, loss = {}.".format(epoch_idx, worker_num*batch_size/duration, acc, loss))
+            print("Total duration => {} sec, comm => {} sec, aggregation => {}sec, delta => {} sec".format(duration, comm_duration,agg_duration, delta_time))
     finally:
         for w in worker_list:
             w.socket.shutdown(2)
