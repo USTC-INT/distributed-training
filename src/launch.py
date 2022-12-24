@@ -35,24 +35,23 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ip=args.ip
 
-def aggregate(local_para, worker_list, step_size):
-    with torch.no_grad():
-        para_delta = torch.zeros_like(local_para)
-        average_weight = 1.0 / (len(worker_list) + 1)
-        for w in worker_list:
-            model_delta = w.updated_paras - local_para
-            para_delta += average_weight * step_size * model_delta
 
-        local_para += para_delta
-
-    return local_para
+def aggregate(global_model, worker_list, step_size):
+    local_para = torch.nn.utils.parameters_to_vector(global_model.parameters())
+    
+    average_weight = 1.0 / (len(worker_list) + 1)
+    local_para += average_weight * step_size * sum([w.updated_paras - local_para for w in worker_list])
+    
+    torch.nn.utils.vector_to_parameters(local_para, global_model.parameters())
 
 def test(model, data_loader, device):
     model.eval()
+
     data_loader = data_loader.loader
     loss = 0.0
     accuracy = 0.0
     correct = 0
+
     with torch.no_grad():
         for data, target in data_loader:
             data, target = data.to(device), target.to(device)
@@ -72,12 +71,14 @@ def test(model, data_loader, device):
 
 def train(model, data_loader, optimizer, local_iters=None, device=None):
     model.train()
+
     if local_iters is None:
         local_iters = math.ceil(len(data_loader.loader.dataset) / data_loader.loader.batch_size)
     
     train_loss = 0.0
     samples_num = 0
-    for iter_idx in range(local_iters):
+
+    for _ in range(local_iters):
         data, target = next(data_loader)
         data, target = data.to(device), target.to(device)
         output = model(data)
@@ -100,6 +101,7 @@ def communication_parallel(worker_list, action, para=None,updated_data=None, par
     asyncio.set_event_loop(loop)
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=len(worker_list), )
     tasks = []
+    
     for w in worker_list:
         if action == "init":
             tasks.append(loop.run_in_executor(executor, w.launch, para, partition))
@@ -107,13 +109,14 @@ def communication_parallel(worker_list, action, para=None,updated_data=None, par
             tasks.append(loop.run_in_executor(executor, w.get_trained_model))
         elif action == "push":
             tasks.append(loop.run_in_executor(executor, w.send_data, updated_data))
+    
     loop.run_until_complete(asyncio.wait(tasks))
     loop.close()
 
 def master_loop(model, dataset, worker_num, config_file, batch_size, epoch, base_port):
     master_listen_port_base = base_port + random.randint(0,20) * 20
     worker_list=[]
-    step_size=50
+    step_size=1
 
     try:
         global_model = models.get_model(model)
@@ -167,7 +170,9 @@ def master_loop(model, dataset, worker_num, config_file, batch_size, epoch, base
         exit(1)
     else:
         print("Start training...")
+
         global_model.to(device)
+
         for epoch_idx in range(epoch):
             comm_duration=0
             start_time=time.time()
@@ -176,24 +181,23 @@ def master_loop(model, dataset, worker_num, config_file, batch_size, epoch, base
             delta_time = max([w.sending_time for w in worker_list]) - min([w.sending_time for w in worker_list])
 
             start_agg=time.time()
-            global_para = torch.nn.utils.parameters_to_vector(global_model.parameters()).clone().detach()
-            global_para = aggregate(global_para, worker_list, step_size)
+            aggregate(global_model, worker_list, step_size)
             agg_duration=time.time()-start_agg
 
-            communication_parallel(worker_list, action="push", updated_data=global_para)
-
-            duration = time.time() - start_time
+            updated_para = torch.nn.utils.parameters_to_vector(global_model.parameters()).detach()
+            communication_parallel(worker_list, action="push", updated_data=updated_para)
             
-            torch.nn.utils.vector_to_parameters(global_para, global_model.parameters())
+            total_duration = time.time() - start_time
+            
             loss, acc = test(global_model, test_loader, device)
 
-            print("Epoch: {}, throughput = {} image/s, accuracy = {}, loss = {}.".format(epoch_idx, worker_num*batch_size/duration, acc, loss))
-            print("Total duration => {} sec, comm => {} sec, aggregation => {}sec, delta => {} sec".format(duration, comm_duration,agg_duration, delta_time))
+            print("Epoch: {}, throughput = {} image/s, accuracy = {}, loss = {}.".format(epoch_idx, worker_num*batch_size/total_duration, acc, loss))
+            print("Total duration => {} sec, comm => {} sec, aggregation => {} sec, delta => {} sec".format(total_duration, comm_duration,agg_duration, delta_time))
     finally:
         for w in worker_list:
             w.socket.shutdown(2)
 
-def worker_loop(model, dataset,idx, batch_size, epoch, master_port):
+def worker_loop(model, dataset, idx, batch_size, epoch, master_port):
     lr=0.01
     min_lr=0.001
     decay_rate=0.97
@@ -220,29 +224,33 @@ def worker_loop(model, dataset,idx, batch_size, epoch, master_port):
     except ValueError as e:
         print(e)
     else:
-        train_loader = datasets.create_dataloaders(train_dataset, batch_size,selected_idxs=config["train_data_index"])
+        train_loader = datasets.create_dataloaders(train_dataset, batch_size, selected_idxs=config["train_data_index"])
         test_loader = datasets.create_dataloaders(test_dataset, batch_size, shuffle=False)
+        
         torch.nn.utils.vector_to_parameters(config['para'], local_model.parameters())
         local_model.to(device)
+        
         local_steps = 50
 
         for epoch in range(epoch):
             start=time.time()
             epoch_lr = max((decay_rate * lr, min_lr))
             optimizer = torch.optim.SGD(local_model.parameters(), lr=epoch_lr, weight_decay=weight_decay)
+            
             train_loss = train(local_model, train_loader, optimizer, local_iters=local_steps, device=device)
-            local_para = torch.nn.utils.parameters_to_vector(local_model.parameters()).clone().detach()
+            
             duration=time.time()-start
             test_loss, acc = test(local_model, test_loader, device)
             
-            print("Epoch {}: train loss = {}, test loss = {}, test accuracy = {}, duration = {} sec.".format(epoch, train_loss,test_loss, acc, duration))
-            
             push_time=time.time()
+            local_para = torch.nn.utils.parameters_to_vector(local_model.parameters()).detach()
             worker.send_data(master_socket, push_time, local_para)
 
-            local_para = worker.get_data(master_socket)
+            updated_para = worker.get_data(master_socket)
+            updated_para.to(device)
+            torch.nn.utils.vector_to_parameters(updated_para, local_model.parameters())
 
-            torch.nn.utils.vector_to_parameters(local_para, local_model.parameters())
+            print("Epoch {}: train loss = {}, test loss = {}, test accuracy = {}, duration = {} sec.".format(epoch, train_loss,test_loss, acc, duration))
     finally:
         master_socket.shutdown(2)
         master_socket.close()
