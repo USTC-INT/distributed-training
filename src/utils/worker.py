@@ -9,6 +9,7 @@ from threading import Thread
 
 
 work_dir = '/home/sdn/fj/distributed-layer-INA'
+work_time = time.strftime("%Y-%m-%d-%H_%M_%S",time.localtime(time.time()))
 
 def killport(port):
     command = '''kill -9 $(netstat -nlp | grep :''' + str(
@@ -127,7 +128,7 @@ class Worker:
                   ' --model ' + str(self.model) + \
                   ' --epoch ' + str(self.epoch) + \
                   ' --batch_size ' + str(self.batch_size) + \
-                  ' > data/log/worker_' + str(self.idx) + '.txt 2>&1'
+                  ' > data/log/'+work_time+'_worker_' + str(self.idx) + '.txt 2>&1'
             print("Execute {}.".format(cmd))
             stdin, stdout, stderr = ssh.exec_command(cmd, get_pty=True)
             stdin.write('sdn123456' + '\n')
